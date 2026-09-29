@@ -7,7 +7,8 @@ import {
   Filter,
   Check,
   Tag,
-  Hash
+  Hash,
+  GitBranch
 } from 'lucide-react';
 import { DateFilterOption, DateTarget, FileCategory, SearchFilters } from '../types';
 
@@ -18,6 +19,7 @@ interface FilterBarProps {
   onSaveSearchClick: () => void;
   categoryCounts: Record<FileCategory, number>;
   tagCounts?: Record<string, number>;
+  foldedRevisionCount?: number;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -27,6 +29,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onSaveSearchClick,
   categoryCounts,
   tagCounts = {},
+  foldedRevisionCount = 0,
 }) => {
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
@@ -322,6 +325,29 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 <Hash className="w-3 h-3 text-slate-400" />
                 <span>Match ANY Word</span>
               </>
+            )}
+          </button>
+
+          {/* Revision Mode Toggle: Latest Only (default) vs Show All */}
+          <button
+            onClick={() => onUpdateFilters({ showAllRevisions: !filters.showAllRevisions })}
+            className={`h-8 px-2.5 text-xs font-medium border rounded-md flex items-center gap-1.5 transition-colors ${
+              filters.showAllRevisions
+                ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold shadow-2xs'
+                : 'bg-white dark:bg-[#1e2430] border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-slate-400'
+            }`}
+            title={
+              filters.showAllRevisions
+                ? 'Showing all revisions including superseded versions (e.g. _revA, _v1). Click to collapse and show latest only.'
+                : 'Default: Showing only latest revisions. Suffixes like _revA, _v1 are folded under latest parent. Click to show all revisions.'
+            }
+          >
+            <GitBranch className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span>{filters.showAllRevisions ? 'All Revisions' : 'Latest Only'}</span>
+            {!filters.showAllRevisions && (foldedRevisionCount || 0) > 0 && (
+              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 rounded-full font-bold">
+                {foldedRevisionCount} folded
+              </span>
             )}
           </button>
 

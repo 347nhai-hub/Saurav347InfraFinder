@@ -65,6 +65,16 @@ export interface SearchFilters {
   hideSuperseded?: boolean; // Hide superseded versions (Version Tracking)
   fuzzySearchEnabled?: boolean; // Fuzzy typo tolerance & abbreviations (e.g. ROW, ROB, RE wall)
   smartCollection?: string; // 'all' | 'approved_30d' | 'urgent_quality' | 'cad_drawings' | 'billing_ipc' | 'duplicates'
+  showAllRevisions?: boolean; // When true: shows all revisions. Defaults to false (only latest revision shown)
+}
+
+export interface RevisionGroupInfo {
+  baseName: string;
+  revision: string;
+  isLatest: boolean;
+  totalRevisions: number;
+  supersededCount: number;
+  supersededFiles: FileItem[];
 }
 
 export interface SearchResult {
@@ -72,6 +82,7 @@ export interface SearchResult {
   score: number;
   snippet?: string;
   matchType?: 'filename' | 'content' | 'path' | 'tag' | 'metadata';
+  revisionInfo?: RevisionGroupInfo;
 }
 
 export interface SearchHistoryItem {

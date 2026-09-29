@@ -25,7 +25,8 @@ import {
   Compass,
   Layers,
   WrapText,
-  Tag
+  Tag,
+  GitBranch
 } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatDate, formatFileSize } from '../services/localFileSystem';
@@ -37,6 +38,8 @@ interface PreviewPaneProps {
   onOpenItem: (item: FileItem) => void;
   onOpenContainingFolder: (item: FileItem) => void;
   onManageTags?: (file: FileItem) => void;
+  revisions?: { current: FileItem; latest: FileItem; allRevisions: FileItem[]; superseded: FileItem[] } | null;
+  onSelectRevision?: (file: FileItem) => void;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -45,6 +48,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onOpenItem,
   onOpenContainingFolder,
   onManageTags,
+  revisions,
+  onSelectRevision,
 }) => {
   const [copiedPath, setCopiedPath] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
@@ -573,6 +578,59 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             <span>{copiedPath ? 'Copied' : 'Path'}</span>
           </button>
         </div>
+
+        {/* Revision Family & Superseded Versions Card */}
+        {revisions && revisions.allRevisions.length > 1 && (
+          <div className="mt-2.5 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-lg text-xs">
+            <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 dark:text-amber-200 mb-1">
+              <span className="flex items-center gap-1.5">
+                <GitBranch className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                Revision Family ({revisions.allRevisions.length} versions)
+              </span>
+              {revisions.latest.id === file.id ? (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 uppercase font-bold">
+                  Latest Version
+                </span>
+              ) : (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 uppercase font-bold">
+                  Superseded
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80 mb-1.5">
+              Click any version below to jump preview:
+            </p>
+            <div className="space-y-1 max-h-32 overflow-y-auto no-scrollbar">
+              {revisions.allRevisions.map((revFile) => {
+                const isCurrent = revFile.id === file.id;
+                const isLatest = revFile.id === revisions.latest.id;
+                return (
+                  <div
+                    key={revFile.id}
+                    onClick={() => onSelectRevision?.(revFile)}
+                    className={`p-1.5 rounded flex items-center justify-between text-[11px] cursor-pointer transition-colors ${
+                      isCurrent
+                        ? 'bg-amber-100/90 dark:bg-amber-900/60 font-semibold text-amber-950 dark:text-amber-100 border border-amber-300 dark:border-amber-700'
+                        : 'hover:bg-amber-100/50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="truncate flex items-center gap-1.5 min-w-0 pr-2">
+                      <span className={`font-mono text-[10px] font-bold shrink-0 px-1 py-0.2 rounded ${isLatest ? 'bg-amber-200/80 text-amber-900 dark:bg-amber-900 dark:text-amber-200' : 'bg-slate-200/80 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
+                        {revFile.revision || (isLatest ? 'Latest' : 'Rev')}
+                      </span>
+                      <span className="truncate text-[10px]" title={revFile.name}>
+                        {revFile.name}
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                      {formatFileSize(revFile.size)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

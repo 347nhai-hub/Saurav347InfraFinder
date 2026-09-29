@@ -344,7 +344,11 @@ export default function App() {
   const hasQuery = Boolean(filters.query.trim());
   const isGlobalScope = hasQuery || Boolean(filters.selectedTag);
 
-  const { results: searchResults, durationMs: searchDurationMs } = useMemo(() => {
+  const {
+    results: searchResults,
+    durationMs: searchDurationMs,
+    foldedRevisionCount = 0,
+  } = useMemo(() => {
     if (isGlobalScope) {
       return searchEngine.search({
         ...filters,
@@ -359,6 +363,12 @@ export default function App() {
       sortBy: filters.sortBy === 'relevance' ? 'name' : filters.sortBy,
     });
   }, [searchEngine, filters, currentPath, isGlobalScope]);
+
+  // Revisions for currently selected item in preview pane
+  const selectedItemRevisions = useMemo(() => {
+    if (!selectedItem) return null;
+    return searchEngine.getRevisionsForFile(selectedItem.id);
+  }, [selectedItem, searchEngine, files]);
 
   // Category counts
   const categoryCounts = useMemo(() => {
@@ -1466,6 +1476,7 @@ export default function App() {
         onSaveSearchClick={() => setShowSaveSearch(true)}
         categoryCounts={categoryCounts}
         tagCounts={tagCounts}
+        foldedRevisionCount={foldedRevisionCount}
       />
 
       {/* 6. Main Workspace: Sidebar + File List / Grid + Document Preview Pane */}
@@ -1540,6 +1551,8 @@ export default function App() {
             onOpenItem={handleOpenItem}
             onOpenContainingFolder={handleOpenContainingFolder}
             onManageTags={(file) => setTagModalFiles([file])}
+            revisions={selectedItemRevisions}
+            onSelectRevision={(file) => setSelectedItem(file)}
           />
         )}
       </div>

@@ -91,7 +91,13 @@ export class FastSearchEngine {
       .map(r => r.file);
   }
 
-  public search(filters: SearchFilters): { results: SearchResult[]; durationMs: number; totalCount: number } {
+  public search(filters: SearchFilters): {
+    results: SearchResult[];
+    durationMs: number;
+    totalCount: number;
+    foldedRevisionCount: number;
+    totalRevisionGroupsCount: number;
+  } {
     const startTime = performance.now();
     const rawQuery = (filters.query || '').trim();
     const queryLower = rawQuery.toLowerCase();
@@ -302,18 +308,306 @@ export class FastSearchEngine {
     // 5. Sorting
     this.sortResults(filteredRecords, filters.sortBy, filters.sortDirection, rawQuery.length > 0);
 
+    // 6. Revision Grouping Logic Layer
+    // Defaults to showing only the latest revision unless filters.showAllRevisions === true!
+    const { results: groupedResults, foldedRevisionCount, totalRevisionGroupsCount } = this.processRevisionGrouping(
+      filteredRecords,
+      filters.showAllRevisions ?? false
+    );
+
     const endTime = performance.now();
     const durationMs = Math.max(0.4, Number((endTime - startTime).toFixed(1)));
 
     return {
-      results: filteredRecords.map(item => ({
-        file: item.record.file,
-        score: item.score,
-        snippet: item.snippet,
-        matchType: item.matchType,
-      })),
+      results: groupedResults,
       durationMs,
-      totalCount: filteredRecords.length,
+      totalCount: groupedResults.length,
+      foldedRevisionCount,
+      totalRevisionGroupsCount,
+    };
+  }
+
+  /**
+   * Identifies file naming suffixes like '_revA', '_rev01', '_v2', '_final', '_approved'
+   * and extracts the clean base drawing/file name, revision code, and numeric rank.
+   */
+  public static parseRevisionSuffix(fileName: string): {
+    hasSuffix: boolean;
+    baseName: string;
+    revision: string;
+    rank: number;
+  } {
+    const dotIdx = fileName.lastIndexOf('.');
+    const stem = dotIdx !== -1 ? fileName.slice(0, dotIdx) : fileName;
+
+    // Pattern 1: _revA, _revB, _rev01, _rev-A, -revA, .revA
+    const revMatch = stem.match(/[\s._-]rev[\s._-]?([a-zA-Z0-9]+)$/i);
+    if (revMatch) {
+      const revRaw = revMatch[1].toUpperCase();
+      const isLetter = /^[A-Z]$/.test(revRaw);
+      const revNum = isLetter ? revRaw.charCodeAt(0) - 64 : parseInt(revRaw, 10) || 1;
+      const baseName = stem.slice(0, revMatch.index).trim();
+      return {
+        hasSuffix: true,
+        baseName,
+        revision: `Rev-${revRaw}`,
+        rank: revNum,
+      };
+    }
+
+    // Pattern 2: _v1, _v2, _v2.1, _ver2, -v2
+    const verMatch = stem.match(/[\s._-](?:v|ver)[\s._-]?(\d+(?:\.\d+)?)$/i);
+    if (verMatch) {
+      const verNum = parseFloat(verMatch[1]) || 1;
+      const baseName = stem.slice(0, verMatch.index).trim();
+      return {
+        hasSuffix: true,
+        baseName,
+        revision: `v${verMatch[1]}`,
+        rank: verNum * 10,
+      };
+    }
+
+    // Pattern 3: _final, _final_approved, -final, _approved, _asbuilt, _as_built
+    const finalMatch = stem.match(/[\s._-](final(?:[-_]approved)?|approved|as[-_]?built)$/i);
+    if (finalMatch) {
+      const tag = finalMatch[1].toUpperCase().replace(/[-_]/g, ' ');
+      const baseName = stem.slice(0, finalMatch.index).trim();
+      return {
+        hasSuffix: true,
+        baseName,
+        revision: tag,
+        rank: 9999, // Final ranks highest
+      };
+    }
+
+    return {
+      hasSuffix: false,
+      baseName: stem,
+      revision: 'Original',
+      rank: 0,
+    };
+  }
+
+  /**
+   * Groups items with matching base names in the same folder.
+   * When showAll is false (default): folds superseded files under the latest revision item.
+   * When showAll is true: displays all revisions while tagging their relationships.
+   */
+  public processRevisionGrouping(
+    items: { record: IndexRecord; score: number; snippet?: string; matchType?: SearchResult['matchType'] }[],
+    showAll: boolean
+  ): {
+    results: SearchResult[];
+    foldedRevisionCount: number;
+    totalRevisionGroupsCount: number;
+  } {
+    // Group candidate items by parentPath + baseName + extension
+    const groupMap = new Map<string, {
+      items: typeof items;
+      baseName: string;
+    }>();
+
+    for (const item of items) {
+      if (item.record.file.isFolder) continue;
+
+      const parsed = FastSearchEngine.parseRevisionSuffix(item.record.file.name);
+      const groupKey = `${item.record.file.parentPath.toLowerCase()}:::${parsed.baseName.toLowerCase()}:::${item.record.file.extension.toLowerCase()}`;
+
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          items: [],
+          baseName: parsed.baseName,
+        });
+      }
+      groupMap.get(groupKey)!.items.push(item);
+    }
+
+    let foldedRevisionCount = 0;
+    let totalRevisionGroupsCount = 0;
+
+    // Analyze multi-file revision groups
+    const groupAnalysis = new Map<string, {
+      latest: (typeof items)[0];
+      latestParsed: ReturnType<typeof FastSearchEngine.parseRevisionSuffix>;
+      superseded: { item: (typeof items)[0]; parsed: ReturnType<typeof FastSearchEngine.parseRevisionSuffix> }[];
+      allParsed: { item: (typeof items)[0]; parsed: ReturnType<typeof FastSearchEngine.parseRevisionSuffix> }[];
+    }>();
+
+    for (const [key, group] of groupMap.entries()) {
+      if (group.items.length > 1) {
+        totalRevisionGroupsCount++;
+        const parsedList = group.items.map(it => ({
+          item: it,
+          parsed: FastSearchEngine.parseRevisionSuffix(it.record.file.name),
+        }));
+
+        // Sort by rank descending, then modifiedTime descending
+        parsedList.sort((a, b) => {
+          if (b.parsed.rank !== a.parsed.rank) {
+            return b.parsed.rank - a.parsed.rank;
+          }
+          return b.item.record.modifiedTime - a.item.record.modifiedTime;
+        });
+
+        const latest = parsedList[0];
+        const superseded = parsedList.slice(1);
+        foldedRevisionCount += superseded.length;
+
+        groupAnalysis.set(key, {
+          latest: latest.item,
+          latestParsed: latest.parsed,
+          superseded,
+          allParsed: parsedList,
+        });
+      }
+    }
+
+    const processedGroupKeys = new Set<string>();
+    const finalResults: SearchResult[] = [];
+
+    for (const item of items) {
+      if (item.record.file.isFolder) {
+        finalResults.push({
+          file: item.record.file,
+          score: item.score,
+          snippet: item.snippet,
+          matchType: item.matchType,
+        });
+        continue;
+      }
+
+      const parsed = FastSearchEngine.parseRevisionSuffix(item.record.file.name);
+      const groupKey = `${item.record.file.parentPath.toLowerCase()}:::${parsed.baseName.toLowerCase()}:::${item.record.file.extension.toLowerCase()}`;
+      const group = groupAnalysis.get(groupKey);
+
+      if (group) {
+        // Multi-revision group
+        if (!showAll) {
+          // Default: only show latest revision once
+          if (!processedGroupKeys.has(groupKey)) {
+            processedGroupKeys.add(groupKey);
+            finalResults.push({
+              file: {
+                ...group.latest.record.file,
+                isSuperseded: false,
+                revision: group.latestParsed.revision,
+                baseDrawingName: group.latestParsed.baseName,
+              },
+              score: group.latest.score,
+              snippet: group.latest.snippet,
+              matchType: group.latest.matchType,
+              revisionInfo: {
+                baseName: group.latestParsed.baseName,
+                revision: group.latestParsed.revision,
+                isLatest: true,
+                totalRevisions: group.allParsed.length,
+                supersededCount: group.superseded.length,
+                supersededFiles: group.superseded.map(s => ({
+                  ...s.item.record.file,
+                  isSuperseded: true,
+                  revision: s.parsed.revision,
+                  baseDrawingName: s.parsed.baseName,
+                })),
+              },
+            });
+          }
+        } else {
+          // Show All mode: emit each revision
+          const isLatest = group.latest.record.file.id === item.record.file.id;
+          finalResults.push({
+            file: {
+              ...item.record.file,
+              isSuperseded: !isLatest,
+              revision: parsed.revision,
+              baseDrawingName: parsed.baseName,
+            },
+            score: item.score,
+            snippet: item.snippet,
+            matchType: item.matchType,
+            revisionInfo: {
+              baseName: parsed.baseName,
+              revision: parsed.revision,
+              isLatest,
+              totalRevisions: group.allParsed.length,
+              supersededCount: isLatest ? group.superseded.length : 0,
+              supersededFiles: isLatest ? group.superseded.map(s => s.item.record.file) : [],
+            },
+          });
+        }
+      } else {
+        // Single standalone file
+        finalResults.push({
+          file: {
+            ...item.record.file,
+            revision: parsed.hasSuffix ? parsed.revision : item.record.file.revision,
+            baseDrawingName: parsed.baseName,
+          },
+          score: item.score,
+          snippet: item.snippet,
+          matchType: item.matchType,
+          revisionInfo: parsed.hasSuffix ? {
+            baseName: parsed.baseName,
+            revision: parsed.revision,
+            isLatest: true,
+            totalRevisions: 1,
+            supersededCount: 0,
+            supersededFiles: [],
+          } : undefined,
+        });
+      }
+    }
+
+    return {
+      results: finalResults,
+      foldedRevisionCount,
+      totalRevisionGroupsCount,
+    };
+  }
+
+  /**
+   * Retrieves all revisions associated with a given file ID
+   */
+  public getRevisionsForFile(fileId: string): {
+    current: FileItem;
+    latest: FileItem;
+    allRevisions: FileItem[];
+    superseded: FileItem[];
+  } | null {
+    const record = this.recordsById.get(fileId);
+    if (!record || record.file.isFolder) return null;
+
+    const parsed = FastSearchEngine.parseRevisionSuffix(record.file.name);
+    const groupKey = `${record.file.parentPath.toLowerCase()}:::${parsed.baseName.toLowerCase()}:::${record.file.extension.toLowerCase()}`;
+
+    const matching: { file: FileItem; parsed: ReturnType<typeof FastSearchEngine.parseRevisionSuffix>; modifiedTime: number }[] = [];
+    for (const r of this.records) {
+      if (r.file.isFolder) continue;
+      const rParsed = FastSearchEngine.parseRevisionSuffix(r.file.name);
+      const rKey = `${r.file.parentPath.toLowerCase()}:::${rParsed.baseName.toLowerCase()}:::${r.file.extension.toLowerCase()}`;
+      if (rKey === groupKey) {
+        matching.push({ file: r.file, parsed: rParsed, modifiedTime: r.modifiedTime });
+      }
+    }
+
+    if (matching.length <= 1) return null;
+
+    matching.sort((a, b) => {
+      if (b.parsed.rank !== a.parsed.rank) {
+        return b.parsed.rank - a.parsed.rank;
+      }
+      return b.modifiedTime - a.modifiedTime;
+    });
+
+    const latest = matching[0].file;
+    const superseded = matching.slice(1).map(m => m.file);
+    const allRevisions = matching.map(m => m.file);
+
+    return {
+      current: record.file,
+      latest,
+      allRevisions,
+      superseded,
     };
   }
 

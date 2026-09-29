@@ -20,7 +20,10 @@ import {
   X,
   UploadCloud,
   FolderPlus,
-  Tag
+  Tag,
+  GitBranch,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { FileItem, SearchResult, SortByField, SortDirection, ViewMode, ClipboardState, DragDropOperation } from '../types';
 import { formatDate, formatFileSize } from '../services/localFileSystem';
@@ -88,7 +91,21 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [isDraggingOverBg, setIsDraggingOverBg] = useState(false);
   const [dragOperation, setDragOperation] = useState<DragDropOperation>('move');
+  const [expandedRevisions, setExpandedRevisions] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const toggleExpandRevision = (fileId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedRevisions((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
+  };
 
   // Reset limit when query or path changes
   useEffect(() => {
@@ -350,7 +367,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
         )}
 
         <div className="icons-grid-bg p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 content-start flex-1 min-h-[300px]">
-          {visibleResults.map(({ file }) => {
+          {visibleResults.map(({ file, revisionInfo }) => {
             const isSelected = selectedIds.has(file.id);
             const isCut = clipboard.operation === 'cut' && clipboard.items.some((c) => c.id === file.id);
             const isDropTarget = dropTargetFolderId === file.id;
@@ -409,6 +426,22 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
                 <span className="text-[10px] text-slate-400 mt-1 font-mono font-tabular">
                   {file.isFolder ? `${file.itemCount || 0} items` : formatFileSize(file.size)}
                 </span>
+
+                {/* Revision badge in grid icon card */}
+                {revisionInfo && (
+                  <span className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                    file.isSuperseded
+                      ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                  }`}>
+                    <GitBranch className="w-2.5 h-2.5" />
+                    <span>{revisionInfo.revision}</span>
+                    {revisionInfo.totalRevisions > 1 && revisionInfo.isLatest && (
+                      <span className="opacity-80">({revisionInfo.totalRevisions}v)</span>
+                    )}
+                  </span>
+                )}
+
                 {file.category !== 'folder' && (
                   <span className="mt-1 px-1.5 py-0.2 rounded text-[9px] font-semibold uppercase bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
                     {file.extension || 'file'}
@@ -616,65 +649,116 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
 
       {/* Rows */}
       <div className="details-rows-bg divide-y divide-slate-100 dark:divide-slate-800/80 flex-1 min-h-[300px]">
-        {visibleResults.map(({ file, snippet }) => {
+        {visibleResults.map(({ file, snippet, matchType, revisionInfo }) => {
           const isSelected = selectedIds.has(file.id);
           const isCut = clipboard.operation === 'cut' && clipboard.items.some((c) => c.id === file.id);
           const isDropTarget = dropTargetFolderId === file.id;
+          const hasMultiRevisions = Boolean(revisionInfo && revisionInfo.totalRevisions > 1);
+          const isExpanded = expandedRevisions.has(file.id);
 
           return (
-            <div
-              key={file.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, file)}
-              onDragOver={file.isFolder ? (e) => handleDragOverFolder(e, file) : undefined}
-              onDragLeave={file.isFolder ? (e) => handleDragLeaveFolder(e, file) : undefined}
-              onDrop={file.isFolder ? (e) => handleDropOnFolder(e, file) : undefined}
-              onClick={(e) => onSelectItem(file, e.ctrlKey || e.metaKey, e.shiftKey)}
-              onDoubleClick={() => onOpenItem(file)}
-              onContextMenu={(e) => onContextMenu(e, file)}
-              className={`grid grid-cols-12 px-3 py-2 items-center text-xs cursor-pointer select-none transition-colors group ${
-                isDropTarget
-                  ? 'border-2 border-blue-500 bg-blue-100/90 dark:bg-blue-900/60 font-semibold'
-                  : isSelected
-                  ? 'bg-blue-100/80 dark:bg-blue-900/40 text-blue-950 dark:text-blue-100 font-medium'
-                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200'
-              } ${isCut ? 'opacity-40' : ''}`}
-            >
-              {/* Checkbox, Icon & Name Column */}
-              <div className="col-span-5 md:col-span-4 flex items-center gap-2.5 min-w-0 pr-2">
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleSelectItem(file);
-                  }}
-                  className={`p-0.5 rounded cursor-pointer transition-opacity ${
-                    isSelected || showCheckboxes
-                      ? 'opacity-100'
-                      : 'opacity-0 group-hover:opacity-100'
-                  }`}
-                  title="Select item"
-                >
-                  {isSelected ? (
-                    <CheckSquare className="w-3.5 h-3.5 text-blue-600 fill-blue-500/10" />
+            <React.Fragment key={file.id}>
+              <div
+                draggable
+                onDragStart={(e) => handleDragStart(e, file)}
+                onDragOver={file.isFolder ? (e) => handleDragOverFolder(e, file) : undefined}
+                onDragLeave={file.isFolder ? (e) => handleDragLeaveFolder(e, file) : undefined}
+                onDrop={file.isFolder ? (e) => handleDropOnFolder(e, file) : undefined}
+                onClick={(e) => onSelectItem(file, e.ctrlKey || e.metaKey, e.shiftKey)}
+                onDoubleClick={() => onOpenItem(file)}
+                onContextMenu={(e) => onContextMenu(e, file)}
+                className={`grid grid-cols-12 px-3 py-2 items-center text-xs cursor-pointer select-none transition-colors group ${
+                  isDropTarget
+                    ? 'border-2 border-blue-500 bg-blue-100/90 dark:bg-blue-900/60 font-semibold'
+                    : isSelected
+                    ? 'bg-blue-100/80 dark:bg-blue-900/40 text-blue-950 dark:text-blue-100 font-medium'
+                    : file.isSuperseded
+                    ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/20'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200'
+                } ${isCut ? 'opacity-40' : ''}`}
+              >
+                {/* Checkbox, Icon & Name Column */}
+                <div className="col-span-5 md:col-span-4 flex items-center gap-2 min-w-0 pr-2">
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelectItem(file);
+                    }}
+                    className={`p-0.5 rounded cursor-pointer transition-opacity ${
+                      isSelected || showCheckboxes
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                    title="Select item"
+                  >
+                    {isSelected ? (
+                      <CheckSquare className="w-3.5 h-3.5 text-blue-600 fill-blue-500/10" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+                    )}
+                  </div>
+
+                  {/* Expand/Collapse Chevron for multi-revision families */}
+                  {hasMultiRevisions && (revisionInfo?.supersededCount || 0) > 0 ? (
+                    <button
+                      onClick={(e) => toggleExpandRevision(file.id, e)}
+                      className="p-1 rounded text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/60 transition-colors"
+                      title={isExpanded ? 'Collapse older revisions' : `Expand ${revisionInfo?.supersededCount} superseded revisions`}
+                    >
+                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </button>
                   ) : (
-                    <Square className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+                    <div className="w-2" />
                   )}
-                </div>
 
-                {file.thumbnailUrl ? (
-                  <img src={file.thumbnailUrl} alt={file.name} className="w-5 h-5 rounded-xs object-cover border border-slate-300 dark:border-slate-600 shrink-0" />
-                ) : (
-                  getFileIcon(file)
-                )}
+                  {file.thumbnailUrl ? (
+                    <img src={file.thumbnailUrl} alt={file.name} className="w-5 h-5 rounded-xs object-cover border border-slate-300 dark:border-slate-600 shrink-0" />
+                  ) : (
+                    getFileIcon(file)
+                  )}
 
-                <div className="truncate">
-                  <p className="truncate font-medium text-slate-900 dark:text-slate-100" title={file.name}>
-                    {renderHighlighted(file.name, searchQuery)}
-                  </p>
-                  {/* Tag badges */}
-                  {file.tags && file.tags.length > 0 && (
+                  <div className="truncate flex-1">
+                    <p className={`truncate font-medium ${file.isSuperseded ? 'text-slate-600 dark:text-slate-400 italic' : 'text-slate-900 dark:text-slate-100'}`} title={file.name}>
+                      {renderHighlighted(file.name, searchQuery)}
+                    </p>
+
                     <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                      {file.tags.map((tag) => (
+                      {/* Revision indicator badge */}
+                      {revisionInfo && (
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                          file.isSuperseded
+                            ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                        }`}>
+                          <GitBranch className="w-2.5 h-2.5" />
+                          <span>{revisionInfo.revision}</span>
+                          {hasMultiRevisions && revisionInfo.isLatest && (
+                            <span className="text-[9px] font-normal opacity-85">
+                              ({revisionInfo.totalRevisions} total)
+                            </span>
+                          )}
+                        </span>
+                      )}
+
+                      {/* Superseded tag if file is superseded */}
+                      {file.isSuperseded && (
+                        <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 font-semibold">
+                          Superseded
+                        </span>
+                      )}
+
+                      {/* Quick unfold toggle */}
+                      {hasMultiRevisions && (revisionInfo?.supersededCount || 0) > 0 && !isExpanded && (
+                        <button
+                          onClick={(e) => toggleExpandRevision(file.id, e)}
+                          className="text-[10px] text-amber-700 dark:text-amber-400 hover:underline flex items-center font-medium ml-0.5"
+                        >
+                          +{revisionInfo?.supersededCount} older ▾
+                        </button>
+                      )}
+
+                      {/* Custom Tags */}
+                      {file.tags && file.tags.map((tag) => (
                         <span
                           key={tag}
                           onClick={(e) => {
@@ -688,44 +772,109 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
                           <span>{tag}</span>
                         </span>
                       ))}
+
+                      {file.metadata?.Chainage && (
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                          Ch. {file.metadata.Chainage}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {file.metadata?.Chainage && (
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                      Ch. {file.metadata.Chainage}
-                    </span>
+                  </div>
+                </div>
+
+                {/* Date Modified */}
+                <div className="col-span-3 md:col-span-2 text-slate-500 dark:text-slate-400 font-mono font-tabular text-[11px]">
+                  {formatDate(file.modifiedDate)}
+                </div>
+
+                {/* Type */}
+                <div className="hidden md:block col-span-2 text-slate-600 dark:text-slate-400 truncate text-[11px] capitalize">
+                  {file.isFolder ? 'File folder' : `${file.extension.toUpperCase()} document`}
+                </div>
+
+                {/* Size */}
+                <div className="col-span-2 md:col-span-1 text-right text-slate-500 dark:text-slate-400 font-mono font-tabular text-[11px] pr-2">
+                  {file.isFolder ? '' : formatFileSize(file.size)}
+                </div>
+
+                {/* Path & Match Snippet */}
+                <div className="col-span-2 md:col-span-3 min-w-0 pl-2">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate" title={file.path}>
+                    {file.parentPath}
+                  </p>
+                  {snippet && (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate italic mt-0.5">
+                      {renderHighlighted(snippet, searchQuery)}
+                    </p>
                   )}
                 </div>
               </div>
 
-              {/* Date Modified */}
-              <div className="col-span-3 md:col-span-2 text-slate-500 dark:text-slate-400 font-mono font-tabular text-[11px]">
-                {formatDate(file.modifiedDate)}
-              </div>
-
-              {/* Type */}
-              <div className="hidden md:block col-span-2 text-slate-600 dark:text-slate-400 truncate text-[11px] capitalize">
-                {file.isFolder ? 'File folder' : `${file.extension.toUpperCase()} document`}
-              </div>
-
-              {/* Size */}
-              <div className="col-span-2 md:col-span-1 text-right text-slate-500 dark:text-slate-400 font-mono font-tabular text-[11px] pr-2">
-                {file.isFolder ? '' : formatFileSize(file.size)}
-              </div>
-
-              {/* Path & Match Snippet */}
-              <div className="col-span-2 md:col-span-3 min-w-0 pl-2">
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate" title={file.path}>
-                  {file.parentPath}
-                </p>
-
-                {snippet && searchQuery && (
-                  <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-300 bg-amber-50/80 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200/60 dark:border-amber-900/60 line-clamp-1 italic">
-                    "{renderHighlighted(snippet, searchQuery)}"
+              {/* Sub-rows for Folded Superseded Revisions */}
+              {isExpanded && revisionInfo && revisionInfo.supersededFiles.length > 0 && (
+                <div className="bg-amber-50/50 dark:bg-[#12161f] border-l-2 border-amber-400 dark:border-amber-600 divide-y divide-amber-100/60 dark:divide-slate-800/60 ml-6 mr-2 my-1 rounded-r-lg shadow-2xs">
+                  <div className="px-3 py-1 bg-amber-100/60 dark:bg-amber-950/40 text-[10px] font-bold text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <GitBranch className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                      Superseded Revision History for &ldquo;{revisionInfo.baseName}&rdquo;
+                    </span>
+                    <span className="font-normal text-amber-700 dark:text-amber-400">
+                      {revisionInfo.supersededFiles.length} older {revisionInfo.supersededFiles.length === 1 ? 'version' : 'versions'}
+                    </span>
                   </div>
-                )}
-              </div>
-            </div>
+                  {revisionInfo.supersededFiles.map((supFile) => {
+                    const isSupSelected = selectedIds.has(supFile.id);
+                    return (
+                      <div
+                        key={supFile.id}
+                        onClick={(e) => onSelectItem(supFile, e.ctrlKey || e.metaKey, e.shiftKey)}
+                        onDoubleClick={() => onOpenItem(supFile)}
+                        onContextMenu={(e) => onContextMenu(e, supFile)}
+                        className={`grid grid-cols-12 px-3 py-1.5 items-center text-xs cursor-pointer select-none transition-colors ${
+                          isSupSelected
+                            ? 'bg-amber-100/90 dark:bg-amber-950/80 font-medium'
+                            : 'hover:bg-amber-100/40 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="col-span-5 md:col-span-4 flex items-center gap-2 min-w-0 pr-2 pl-3">
+                          <span className="text-slate-400 font-mono text-[10px]">└─</span>
+                          {getFileIcon(supFile)}
+                          <div className="truncate">
+                            <span className="truncate text-slate-700 dark:text-slate-300 text-[11px] font-medium" title={supFile.name}>
+                              {supFile.name}
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100/80 dark:bg-slate-800 text-amber-800 dark:text-amber-300 font-mono font-bold">
+                                {supFile.revision || 'Rev'}
+                              </span>
+                              <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-semibold">
+                                Superseded
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-span-3 md:col-span-2 text-slate-400 font-mono text-[10px]">
+                          {formatDate(supFile.modifiedDate)}
+                        </div>
+
+                        <div className="hidden md:block col-span-2 text-slate-400 text-[10px]">
+                          Superseded {supFile.extension.toUpperCase()}
+                        </div>
+
+                        <div className="col-span-2 md:col-span-1 text-right text-slate-400 font-mono text-[10px] pr-2">
+                          {formatFileSize(supFile.size)}
+                        </div>
+
+                        <div className="col-span-2 md:col-span-3 text-[10px] text-slate-400 font-mono truncate pl-2">
+                          {supFile.path}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
       </div>
