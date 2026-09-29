@@ -111,6 +111,8 @@ export default function App() {
             !d.label.includes('Windows System SSD')
         );
 
+        const defaultProjectPath = 'D:\\NH48_Highway_Project';
+
         if (cleanFiles && cleanFiles.length > 0) {
           setFiles(cleanFiles);
         } else {
@@ -119,8 +121,8 @@ export default function App() {
           setFiles(sample.files);
           setDrives(sample.drives);
           setIndexedLocations(sample.locations);
-          setCurrentPath(sample.drives[0].letter);
-          setHistory([sample.drives[0].letter]);
+          setCurrentPath(defaultProjectPath);
+          setHistory([defaultProjectPath]);
           await localDB.saveFilesBatch(sample.files);
           await localDB.saveDrives(sample.drives);
           await localDB.setSetting('indexed_locations', sample.locations);
@@ -128,8 +130,6 @@ export default function App() {
 
         if (cleanDrives && cleanDrives.length > 0) {
           setDrives(cleanDrives);
-          setCurrentPath(cleanDrives[0].letter);
-          setHistory([cleanDrives[0].letter]);
         }
 
         if (storedLocations && Array.isArray(storedLocations)) {
@@ -137,11 +137,6 @@ export default function App() {
           if (cleanLocs.length > 0) {
             setIndexedLocations(cleanLocs);
           }
-        }
-
-        // Only prompt first time if user hasn't connected drives
-        if (!permissionGranted && cleanFiles.length === 0) {
-          setShowDriveGrantModal(true);
         }
       } catch (err) {
         console.warn('IndexedDB initial load error:', err);
@@ -154,10 +149,11 @@ export default function App() {
 
   const searchEngine = useMemo(() => new FastSearchEngine(files), [files]);
 
-  // Navigation & Path History
-  const [currentPath, setCurrentPath] = useState<string>('D:');
-  const [history, setHistory] = useState<string[]>(['D:']);
+  // Navigation & Path History (Defaults to project workspace with all folders and files visible)
+  const [currentPath, setCurrentPath] = useState<string>('D:\\NH48_Highway_Project');
+  const [history, setHistory] = useState<string[]>(['D:\\NH48_Highway_Project']);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const [includeSubfolders, setIncludeSubfolders] = useState<boolean>(false);
 
   // If drives load and currentPath is default, navigate to first drive
   useEffect(() => {
@@ -260,10 +256,14 @@ export default function App() {
   };
 
   const handleGoUp = () => {
-    if (drives.some(d => d.letter === currentPath) || currentPath.length <= 2) return;
+    if (currentPath === 'This PC') return;
+    if (drives.some(d => d.letter.toLowerCase() === currentPath.toLowerCase()) || currentPath.length <= 2) {
+      navigateTo('This PC');
+      return;
+    }
     const parts = currentPath.split(/[\\/]/).filter(Boolean);
     if (parts.length <= 1) {
-      navigateTo(parts[0] || 'D:');
+      navigateTo('This PC');
     } else {
       parts.pop();
       navigateTo(parts.join('\\'));
@@ -285,7 +285,10 @@ export default function App() {
 
       const isModifier = e.ctrlKey || e.metaKey;
 
-      if (e.altKey && e.key === 'ArrowLeft') {
+      if (e.key === 'Enter' && selectedItem) {
+        e.preventDefault();
+        handleOpenItem(selectedItem);
+      } else if (e.altKey && e.key === 'ArrowLeft') {
         e.preventDefault();
         handleGoBack();
       } else if (e.altKey && e.key === 'ArrowRight') {
@@ -356,13 +359,24 @@ export default function App() {
       });
     }
 
-    const folderItems = searchEngine.getFolderChildren(currentPath);
+    if (currentPath === 'This PC') {
+      const rootFolders = files.filter(
+        (f) => f.isFolder && drives.some((d) => d.letter.toLowerCase() === f.parentPath.toLowerCase())
+      );
+      const subEngine = new FastSearchEngine(rootFolders);
+      return subEngine.search({
+        ...filters,
+        sortBy: 'name',
+      });
+    }
+
+    const folderItems = searchEngine.getFolderChildren(currentPath, includeSubfolders);
     const subEngine = new FastSearchEngine(folderItems);
     return subEngine.search({
       ...filters,
       sortBy: filters.sortBy === 'relevance' ? 'name' : filters.sortBy,
     });
-  }, [searchEngine, filters, currentPath, isGlobalScope]);
+  }, [searchEngine, filters, currentPath, isGlobalScope, includeSubfolders, files, drives]);
 
   // Revisions for currently selected item in preview pane
   const selectedItemRevisions = useMemo(() => {
@@ -372,7 +386,11 @@ export default function App() {
 
   // Category counts
   const categoryCounts = useMemo(() => {
-    const allItems = isGlobalScope ? searchEngine.getAllFiles() : searchEngine.getFolderChildren(currentPath);
+    const allItems = isGlobalScope
+      ? searchEngine.getAllFiles()
+      : currentPath === 'This PC'
+      ? files.filter((f) => f.isFolder && drives.some((d) => d.letter.toLowerCase() === f.parentPath.toLowerCase()))
+      : searchEngine.getFolderChildren(currentPath, includeSubfolders);
     const counts: Record<FileCategory, number> = {
       all: allItems.length,
       pdf: 0,
@@ -391,7 +409,7 @@ export default function App() {
       }
     }
     return counts;
-  }, [searchEngine, currentPath, isGlobalScope]);
+  }, [searchEngine, currentPath, isGlobalScope, includeSubfolders, files, drives]);
 
   // Tag counts for FilterBar
   const tagCounts = useMemo(() => {
@@ -1397,7 +1415,7 @@ export default function App() {
         onNavigatePath={navigateTo}
         canGoBack={historyIndex > 0}
         canGoForward={historyIndex < history.length - 1}
-        canGoUp={!drives.some(d => d.letter === currentPath) && currentPath.length > 2}
+        canGoUp={currentPath !== 'This PC'}
         onGoBack={handleGoBack}
         onGoForward={handleGoForward}
         onGoUp={handleGoUp}
@@ -1407,6 +1425,8 @@ export default function App() {
         showPreviewPane={showPreviewPane}
         onTogglePreviewPane={() => setShowPreviewPane(!showPreviewPane)}
         onDropOnBreadcrumb={(targetPath, itemIds, op) => handleDropItemsOnTarget(targetPath, itemIds, op)}
+        includeSubfolders={includeSubfolders}
+        onToggleIncludeSubfolders={() => setIncludeSubfolders((prev) => !prev)}
       />
 
       {/* 3. Windows 11 Explorer Command Bar */}
@@ -1484,6 +1504,7 @@ export default function App() {
         {/* Left Windows Sidebar */}
         <Sidebar
           drives={drives}
+          folders={files.filter((f) => f.isFolder)}
           currentPath={currentPath}
           onNavigatePath={navigateTo}
           indexedLocations={indexedLocations}
@@ -1541,6 +1562,9 @@ export default function App() {
             if (targets.length > 0) setTagModalFiles(targets);
           }}
           onTagClick={(tag) => handleUpdateFilters({ selectedTag: filters.selectedTag === tag ? undefined : tag })}
+          onClearSearch={() => handleSearchChange('')}
+          drives={drives}
+          onNavigatePath={navigateTo}
         />
 
         {/* Right Preview Pane (collapsible) */}

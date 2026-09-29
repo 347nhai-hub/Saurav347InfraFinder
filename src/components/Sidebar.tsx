@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Star, 
   HardDrive, 
@@ -13,12 +13,14 @@ import {
   Database,
   Layers,
   RotateCw,
-  Edit3
+  Edit3,
+  Monitor
 } from 'lucide-react';
-import { DriveInfo, IndexedLocation, SavedSearch, DragDropOperation } from '../types';
+import { DriveInfo, IndexedLocation, SavedSearch, DragDropOperation, FileItem } from '../types';
 
 interface SidebarProps {
   drives: DriveInfo[];
+  folders?: FileItem[];
   currentPath: string;
   onNavigatePath: (path: string) => void;
   indexedLocations: IndexedLocation[];
@@ -34,8 +36,140 @@ interface SidebarProps {
   onDropOnSidebarItem?: (targetPath: string, itemIds: string[], op: DragDropOperation) => void;
 }
 
+interface TreeNodeProps {
+  folder: FileItem;
+  allFolders: FileItem[];
+  currentPath: string;
+  onNavigatePath: (path: string) => void;
+  expandedFolders: Set<string>;
+  onToggleExpand: (path: string) => void;
+  dropHoverPath: string | null;
+  setDropHoverPath: (path: string | null) => void;
+  onDropOnSidebarItem?: (targetPath: string, itemIds: string[], op: DragDropOperation) => void;
+  depth?: number;
+}
+
+const FolderTreeNode: React.FC<TreeNodeProps> = ({
+  folder,
+  allFolders,
+  currentPath,
+  onNavigatePath,
+  expandedFolders,
+  onToggleExpand,
+  dropHoverPath,
+  setDropHoverPath,
+  onDropOnSidebarItem,
+  depth = 1,
+}) => {
+  const normCurrent = currentPath.toLowerCase().replace(/[\\/]+$/, '');
+  const normFolder = folder.path.toLowerCase().replace(/[\\/]+$/, '');
+  const isActive = normCurrent === normFolder;
+  const isHovered = dropHoverPath === folder.path;
+
+  // Find direct child folders
+  const childFolders = allFolders.filter((f) => {
+    const fParent = f.parentPath.toLowerCase().replace(/[\\/]+$/, '');
+    return fParent === normFolder;
+  });
+
+  const hasChildren = childFolders.length > 0;
+  const isExpanded = expandedFolders.has(normFolder);
+
+  return (
+    <div className="flex flex-col select-none">
+      <div
+        onClick={() => onNavigatePath(folder.path)}
+        onDragOver={(e) => {
+          if (onDropOnSidebarItem) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+            setDropHoverPath(folder.path);
+          }
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          if (dropHoverPath === folder.path) setDropHoverPath(null);
+        }}
+        onDrop={(e) => {
+          if (onDropOnSidebarItem) {
+            e.preventDefault();
+            e.stopPropagation();
+            setDropHoverPath(null);
+            const raw = e.dataTransfer.getData('application/infra-files');
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw);
+                const op: DragDropOperation = e.ctrlKey ? 'copy' : (parsed.op || 'move');
+                onDropOnSidebarItem(folder.path, parsed.ids, op);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }}
+        style={{ paddingLeft: `${depth * 12 + 6}px` }}
+        className={`group flex items-center gap-1.5 py-1 pr-2 rounded-md cursor-pointer transition-colors text-left truncate ${
+          isHovered
+            ? 'bg-blue-100 dark:bg-blue-900/70 ring-2 ring-blue-500 font-bold text-blue-900 dark:text-blue-100'
+            : isActive
+            ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 font-semibold'
+            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+        }`}
+        title={folder.path}
+      >
+        {/* Expand / Collapse Chevron */}
+        {hasChildren ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(normFolder);
+            }}
+            className="p-0.5 hover:bg-slate-300/60 dark:hover:bg-slate-700/60 rounded text-slate-500 dark:text-slate-400 shrink-0"
+            title={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          </button>
+        ) : (
+          <div className="w-4 shrink-0" />
+        )}
+
+        <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+        <span className="truncate text-xs flex-1">{folder.name}</span>
+        {folder.itemCount !== undefined && folder.itemCount > 0 && (
+          <span className="text-[10px] text-slate-400 opacity-60 group-hover:opacity-100">
+            {folder.itemCount}
+          </span>
+        )}
+      </div>
+
+      {/* Render children recursively if expanded */}
+      {isExpanded && hasChildren && (
+        <div className="flex flex-col">
+          {childFolders.map((child) => (
+            <FolderTreeNode
+              key={child.id}
+              folder={child}
+              allFolders={allFolders}
+              currentPath={currentPath}
+              onNavigatePath={onNavigatePath}
+              expandedFolders={expandedFolders}
+              onToggleExpand={onToggleExpand}
+              dropHoverPath={dropHoverPath}
+              setDropHoverPath={setDropHoverPath}
+              onDropOnSidebarItem={onDropOnSidebarItem}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({
   drives,
+  folders = [],
   currentPath,
   onNavigatePath,
   indexedLocations,
@@ -55,6 +189,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [expandIndexLocations, setExpandIndexLocations] = useState(true);
   const [expandSavedSearches, setExpandSavedSearches] = useState(true);
   const [dropHoverPath, setDropHoverPath] = useState<string | null>(null);
+
+  // Expanded folders in the directory tree
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    initial.add('d:\\nh48_highway_project');
+    return initial;
+  });
+
+  // Auto-expand tree nodes along currentPath so current folder is always visible
+  useEffect(() => {
+    if (!currentPath || currentPath === 'This PC') return;
+    const parts = currentPath.split(/[\\/]/).filter(Boolean);
+    const pathsToExpand: string[] = [];
+    let accum = '';
+    for (let i = 0; i < parts.length; i++) {
+      accum = i === 0 ? parts[i] : `${accum}\\${parts[i]}`;
+      pathsToExpand.push(accum.toLowerCase());
+    }
+
+    setExpandedFolders((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const p of pathsToExpand) {
+        if (!next.has(p)) {
+          next.add(p);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [currentPath]);
+
+  const handleToggleExpandFolder = (normPath: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(normPath)) {
+        next.delete(normPath);
+      } else {
+        next.add(normPath);
+      }
+      return next;
+    });
+  };
 
   // Quick access items generated strictly from user's indexed locations & drives
   const quickAccessItems = indexedLocations.map(loc => ({
@@ -164,87 +341,94 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {expandDrives && (
-          <div className="mt-1 space-y-1.5 px-2">
-            {drives.length === 0 ? (
-              <div className="p-3 bg-blue-50/50 dark:bg-blue-950/30 rounded-lg border border-dashed border-blue-300 dark:border-blue-800 text-center">
-                <p className="text-[11px] text-blue-900 dark:text-blue-200 font-medium mb-1.5">No PC Drives Granted</p>
-                <button
-                  onClick={onAddLocalFolder}
-                  className="w-full py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-semibold flex items-center justify-center gap-1 shadow-xs"
-                >
-                  <FolderPlus className="w-3 h-3" />
-                  <span>+ Grant PC Drive (C:, D:)</span>
-                </button>
-              </div>
-            ) : (
-              drives.map((drive) => {
-                const isDriveActive = currentPath === drive.letter;
-                const isHovered = dropHoverPath === drive.letter;
-                const usedPercent = drive.totalBytes > 0 
-                  ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100)) 
-                  : 45;
+          <div className="mt-1 space-y-0.5 px-2">
+            {/* "This PC" Root Node */}
+            <button
+              onClick={() => onNavigatePath('This PC')}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left truncate transition-all ${
+                currentPath === 'This PC'
+                  ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 font-bold'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+              }`}
+              title="This PC (Drives & Root Folders)"
+            >
+              <Monitor className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span className="font-semibold text-xs">This PC</span>
+            </button>
 
-                return (
+            {/* Drives List with Subfolders */}
+            {drives.map((drive) => {
+              const normDrive = drive.letter.toLowerCase().replace(/[\\/]+$/, '');
+              const isDriveActive = currentPath.toLowerCase().replace(/[\\/]+$/, '') === normDrive;
+              const isDriveExpanded = expandedFolders.has(normDrive);
+
+              // Find root folders in this drive
+              const driveRootFolders = folders.filter((f) => {
+                const fParent = f.parentPath.toLowerCase().replace(/[\\/]+$/, '');
+                return fParent === normDrive;
+              });
+
+              const hasDriveFolders = driveRootFolders.length > 0;
+              const usedPercent = drive.totalBytes > 0 
+                ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100)) 
+                : 45;
+
+              return (
+                <div key={drive.letter} className="flex flex-col">
+                  {/* Drive Header Row */}
                   <div
-                    key={drive.letter}
                     onClick={() => onNavigatePath(drive.letter)}
-                    onDragOver={(e) => {
-                      if (onDropOnSidebarItem) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
-                        setDropHoverPath(drive.letter);
-                      }
-                    }}
-                    onDragLeave={(e) => {
-                      e.preventDefault();
-                      if (dropHoverPath === drive.letter) setDropHoverPath(null);
-                    }}
-                    onDrop={(e) => {
-                      if (onDropOnSidebarItem) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDropHoverPath(null);
-                        const raw = e.dataTransfer.getData('application/infra-files');
-                        if (raw) {
-                          try {
-                            const parsed = JSON.parse(raw);
-                            const op: DragDropOperation = e.ctrlKey ? 'copy' : (parsed.op || 'move');
-                            onDropOnSidebarItem(drive.letter, parsed.ids, op);
-                          } catch {
-                            // ignore
-                          }
-                        }
-                      }
-                    }}
-                    className={`px-2.5 py-1.5 rounded-md cursor-pointer transition-all ${
-                      isHovered
-                        ? 'bg-blue-100 dark:bg-blue-900/70 ring-2 ring-blue-500 font-bold text-blue-900 dark:text-blue-100'
-                        : isDriveActive
-                        ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100'
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all ${
+                      isDriveActive
+                        ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 font-bold'
                         : 'hover:bg-slate-200/60 dark:hover:bg-slate-800/60 text-slate-800 dark:text-slate-200'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <HardDrive className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                        <span className="font-semibold text-xs">{drive.letter}</span>
-                        <span className="text-[11px] text-slate-500 truncate max-w-[110px]">{drive.label}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono font-tabular">{usedPercent}%</span>
-                    </div>
+                    {/* Expand/Collapse Chevron for Drive */}
+                    {hasDriveFolders ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleExpandFolder(normDrive);
+                        }}
+                        className="p-0.5 hover:bg-slate-300/60 dark:hover:bg-slate-700/60 rounded text-slate-500 shrink-0"
+                        title={isDriveExpanded ? 'Collapse' : 'Expand'}
+                      >
+                        {isDriveExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      </button>
+                    ) : (
+                      <div className="w-4 shrink-0" />
+                    )}
 
-                    {/* Windows-style storage bar */}
-                    <div className="mt-1 w-full bg-slate-200 dark:bg-slate-700 h-1 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${usedPercent > 90 ? 'bg-red-500' : 'bg-blue-500'}`}
-                        style={{ width: `${usedPercent}%` }}
-                      ></div>
-                    </div>
+                    <HardDrive className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="font-semibold text-xs">{drive.letter}</span>
+                    <span className="text-[11px] text-slate-500 truncate flex-1">{drive.label}</span>
+                    <span className="text-[10px] text-slate-400 font-mono font-tabular">{usedPercent}%</span>
                   </div>
-                );
-              })
-            )}
+
+                  {/* Render Drive Subfolders Tree */}
+                  {isDriveExpanded && hasDriveFolders && (
+                    <div className="flex flex-col">
+                      {driveRootFolders.map((subFolder) => (
+                        <FolderTreeNode
+                          key={subFolder.id}
+                          folder={subFolder}
+                          allFolders={folders}
+                          currentPath={currentPath}
+                          onNavigatePath={onNavigatePath}
+                          expandedFolders={expandedFolders}
+                          onToggleExpand={handleToggleExpandFolder}
+                          dropHoverPath={dropHoverPath}
+                          setDropHoverPath={setDropHoverPath}
+                          onDropOnSidebarItem={onDropOnSidebarItem}
+                          depth={1}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

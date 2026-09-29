@@ -119,6 +119,7 @@ export interface DriveInfo {
   totalBytes: number;
   usedBytes: number;
   type: 'System SSD' | 'Engineering Drive' | 'Project Archive' | 'External Drive';
+  fileSystem?: string;
 }
 
 export interface ContextMenuState {

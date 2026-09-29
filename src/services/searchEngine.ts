@@ -80,12 +80,16 @@ export class FastSearchEngine {
     return this.records.map(r => r.file);
   }
 
-  public getFolderChildren(folderPath: string): FileItem[] {
+  public getFolderChildren(folderPath: string, includeSubfolders: boolean = false): FileItem[] {
     const normTarget = folderPath.toLowerCase().replace(/[\\/]+$/, '');
     
     return this.records
       .filter(r => {
         const normParent = r.file.parentPath.toLowerCase().replace(/[\\/]+$/, '');
+        if (includeSubfolders) {
+          const normItemPath = r.file.path.toLowerCase();
+          return normParent === normTarget || normItemPath.startsWith(normTarget + '\\') || normItemPath.startsWith(normTarget + '/');
+        }
         return normParent === normTarget;
       })
       .map(r => r.file);
