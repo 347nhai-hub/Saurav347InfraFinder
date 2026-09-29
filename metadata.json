@@ -1,0 +1,8 @@
+{
+  "name": "InfraFinder - Highway Project File Explorer & Ultra-Fast Document Search",
+  "description": "Fast, lightweight Windows desktop file browser and local document search engine for highway & infrastructure engineering project teams. Instant full-text and metadata indexing for DPR, MPR, IPC, RA Bills, BOQ, MoRTH, IRC, and CAD drawings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

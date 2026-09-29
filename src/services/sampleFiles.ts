@@ -1,0 +1,238 @@
+import { FileItem, DriveInfo, IndexedLocation } from '../types';
+
+export function createDefaultHighwaySampleFiles(): {
+  files: FileItem[];
+  drives: DriveInfo[];
+  locations: IndexedLocation[];
+} {
+  const rootPath = 'D:\\NH48_Highway_Project';
+  const now = new Date('2026-09-28T09:00:00Z').toISOString();
+  const yesterday = new Date('2026-09-27T14:30:00Z').toISOString();
+  const lastWeek = new Date('2026-09-20T10:15:00Z').toISOString();
+  const lastMonth = new Date('2026-08-15T11:00:00Z').toISOString();
+
+  const files: FileItem[] = [
+    // Folders
+    {
+      id: 'folder-root',
+      name: 'NH48_Highway_Project',
+      extension: '',
+      path: rootPath,
+      parentPath: 'D:',
+      category: 'folder',
+      size: 0,
+      createdDate: lastMonth,
+      modifiedDate: now,
+      isFolder: true,
+      itemCount: 8,
+      isLocalImported: true,
+    },
+    {
+      id: 'folder-billing',
+      name: '01_Billing_and_IPC',
+      extension: '',
+      path: `${rootPath}\\01_Billing_and_IPC`,
+      parentPath: rootPath,
+      category: 'folder',
+      size: 0,
+      createdDate: lastMonth,
+      modifiedDate: yesterday,
+      isFolder: true,
+      itemCount: 3,
+      isLocalImported: true,
+    },
+    {
+      id: 'folder-drawings',
+      name: '02_CAD_Drawings',
+      extension: '',
+      path: `${rootPath}\\02_CAD_Drawings`,
+      parentPath: rootPath,
+      category: 'folder',
+      size: 0,
+      createdDate: lastMonth,
+      modifiedDate: lastWeek,
+      isFolder: true,
+      itemCount: 2,
+      isLocalImported: true,
+    },
+    {
+      id: 'folder-quality',
+      name: '03_Quality_and_Safety',
+      extension: '',
+      path: `${rootPath}\\03_Quality_and_Safety`,
+      parentPath: rootPath,
+      category: 'folder',
+      size: 0,
+      createdDate: lastMonth,
+      modifiedDate: now,
+      isFolder: true,
+      itemCount: 3,
+      isLocalImported: true,
+    },
+
+    // Files in root folder
+    {
+      id: 'file-ipc24',
+      name: 'IPC_24_Interim_Payment_Certificate_Summary.xlsx',
+      extension: 'xlsx',
+      path: `${rootPath}\\01_Billing_and_IPC\\IPC_24_Interim_Payment_Certificate_Summary.xlsx`,
+      parentPath: `${rootPath}\\01_Billing_and_IPC`,
+      category: 'excel',
+      size: 2845000,
+      createdDate: lastWeek,
+      modifiedDate: yesterday,
+      isFolder: false,
+      tags: ['Approved', 'Billing'],
+      metadata: { Chainage: 'KM 42+000 to KM 86+500', Package: 'PKG-02' },
+      contentSnippet: 'Interim Payment Certificate IPC-24 verified against site measurement sheets for earthwork and bituminous pavement.',
+      contentFull: 'Interim Payment Certificate IPC-24 verified against site measurement sheets for earthwork, WMM sub-base and DBM bituminous pavement layers. Total certified amount INR 42.85 Cr approved by Independent Engineer.',
+      isLocalImported: true,
+    },
+    {
+      id: 'file-ra18',
+      name: 'RA_Bill_18_Quantity_Measurement_Book.xlsx',
+      extension: 'xlsx',
+      path: `${rootPath}\\01_Billing_and_IPC\\RA_Bill_18_Quantity_Measurement_Book.xlsx`,
+      parentPath: `${rootPath}\\01_Billing_and_IPC`,
+      category: 'excel',
+      size: 4210000,
+      createdDate: lastMonth,
+      modifiedDate: lastWeek,
+      isFolder: false,
+      tags: ['Approved'],
+      metadata: { Chainage: 'KM 60+200', Item: 'Culvert Box' },
+      contentSnippet: 'Running Account Bill RA-18 itemized bill of quantities with reinforcement steel cross-verification.',
+      contentFull: 'Running Account Bill RA-18 itemized bill of quantities with reinforcement steel cross-verification and structural concrete pouring logs approved.',
+      isLocalImported: true,
+    },
+    {
+      id: 'file-boq',
+      name: 'BOQ_Schedule_B_Price_Escalation_Indices.xlsx',
+      extension: 'xlsx',
+      path: `${rootPath}\\01_Billing_and_IPC\\BOQ_Schedule_B_Price_Escalation_Indices.xlsx`,
+      parentPath: `${rootPath}\\01_Billing_and_IPC`,
+      category: 'excel',
+      size: 1540000,
+      createdDate: lastMonth,
+      modifiedDate: now,
+      isFolder: false,
+      tags: ['Draft'],
+      metadata: { Revision: 'Rev-04' },
+      contentSnippet: 'Wholesale price index escalation calculation for diesel, cement, bitumen and labor components.',
+      contentFull: 'Wholesale price index escalation calculation for diesel, cement, bitumen and labor components under clause 10CC of EPC agreement draft.',
+      isLocalImported: true,
+    },
+    {
+      id: 'file-bridge-cad',
+      name: 'Ch_124_Flyover_Superstructure_CrossSection.dwg',
+      extension: 'dwg',
+      path: `${rootPath}\\02_CAD_Drawings\\Ch_124_Flyover_Superstructure_CrossSection.dwg`,
+      parentPath: `${rootPath}\\02_CAD_Drawings`,
+      category: 'cad',
+      size: 18450000,
+      createdDate: lastMonth,
+      modifiedDate: lastWeek,
+      isFolder: false,
+      tags: ['Approved', 'MoRTH-Compliant'],
+      metadata: { Chainage: 'KM 124+450', Span: '3 x 35m PSC Box Girder' },
+      contentSnippet: 'AutoCAD GAD structural cross-section with prestressing tendon profile details.',
+      contentFull: 'AutoCAD GAD structural cross-section with prestressing tendon profile details, pier cap reinforcement, and elastomeric bearing design per IRC:112 and MoRTH Specifications.',
+      isLocalImported: true,
+    },
+    {
+      id: 'file-alignment-cad',
+      name: 'Main_Carriageway_Horizontal_Alignment_Plan.dxf',
+      extension: 'dxf',
+      path: `${rootPath}\\02_CAD_Drawings\\Main_Carriageway_Horizontal_Alignment_Plan.dxf`,
+      parentPath: `${rootPath}\\02_CAD_Drawings`,
+      category: 'cad',
+      size: 12100000,
+      createdDate: lastMonth,
+      modifiedDate: yesterday,
+      isFolder: false,
+      tags: ['In Review'],
+      metadata: { Chainage: 'KM 0+000 to KM 45+000' },
+      contentSnippet: 'Horizontal curve radius, transition spirals, and super-elevation runoff diagram.',
+      contentFull: 'Horizontal curve radius, transition spirals, and super-elevation runoff diagram prepared in AutoCAD Civil 3D for 6-lane configuration.',
+      isLocalImported: true,
+    },
+    {
+      id: 'file-dpr',
+      name: 'DPR_Volume_IV_Environmental_and_Forest_Clearance.pdf',
+      extension: 'pdf',
+      path: `${rootPath}\\03_Quality_and_Safety\\DPR_Volume_IV_Environmental_and_Forest_Clearance.pdf`,
+      parentPath: `${rootPath}\\03_Quality_and_Safety`,
+      category: 'pdf',
+      size: 14600000,
+      createdDate: lastMonth,
+      modifiedDate: now,
+      isFolder: false,
+      tags: ['Urgent', 'In Review'],
+      metadata: { Status: 'MoEFCC Stage-II Pending' },
+      contentSnippet: 'Detailed Project Report Environmental Impact Assessment with wildlife corridor mitigation measures.',
+      contentFull: 'Detailed Project Report Environmental Impact Assessment with wildlife corridor mitigation measures, compensatory afforestation scheme, and tree felling permissions along NH-48 right-of-way.',
+      isLocalImported: true,
+    },
+    {
+      id: 'file-audit-log',
+      name: 'Safety_Audit_Field_Observations_Ch85.log',
+      extension: 'log',
+      path: `${rootPath}\\03_Quality_and_Safety\\Safety_Audit_Field_Observations_Ch85.log`,
+      parentPath: `${rootPath}\\03_Quality_and_Safety`,
+      category: 'other',
+      size: 38400,
+      createdDate: yesterday,
+      modifiedDate: now,
+      isFolder: false,
+      tags: ['Urgent', 'Draft'],
+      metadata: { Chainage: 'KM 85+600', Inspector: 'Road Safety Auditor' },
+      contentSnippet: '[CRITICAL_WARN] Traffic diversion signage missing retroreflective retro-tape at median crossover.',
+      contentFull: `[2026-09-28 08:30:15] [INFO] Road safety audit initiated at Chainage KM 85+200.
+[2026-09-28 08:42:01] [WARNING] Speed calming rumble strips missing 200m advance warning board.
+[2026-09-28 09:15:33] [CRITICAL_WARN] Traffic diversion signage missing retroreflective retro-tape at median crossover Ch 85+600.
+[2026-09-28 09:45:00] [ACTION_REQUIRED] Contractor instructed to rectify solar blinkers and hazard crash cushions immediately.
+[2026-09-28 10:12:00] [STATUS] Inspection logged for urgent rectification.`,
+      isLocalImported: true,
+    },
+    {
+      id: 'file-mpr',
+      name: 'Contractor_Monthly_Progress_Report_Aug.docx',
+      extension: 'docx',
+      path: `${rootPath}\\03_Quality_and_Safety\\Contractor_Monthly_Progress_Report_Aug.docx`,
+      parentPath: `${rootPath}\\03_Quality_and_Safety`,
+      category: 'word',
+      size: 5120000,
+      createdDate: lastMonth,
+      modifiedDate: lastWeek,
+      isFolder: false,
+      tags: ['In Review'],
+      metadata: { Period: 'August 2026', Progress: '68.4% Cumulative' },
+      contentSnippet: 'Physical and financial cumulative progress against master construction baseline program.',
+      contentFull: 'Physical progress achieved 68.4% against target 72.1%. Major variance due to monsoon delays at major bridge over river Sabarmati. Revised recovery program submitted to Independent Engineer.',
+      isLocalImported: true,
+    },
+  ];
+
+  const drives: DriveInfo[] = [
+    {
+      letter: 'D:',
+      label: 'Highway Project Drive (D:)',
+      totalBytes: 2 * 1024 * 1024 * 1024 * 1024, // 2 TB
+      usedBytes: 58800000,
+      type: 'Engineering Drive',
+    },
+  ];
+
+  const locations: IndexedLocation[] = [
+    {
+      id: 'loc-nh48-default',
+      path: rootPath,
+      name: 'NH48_Highway_Project',
+      drive: 'D:',
+      fileCount: files.length,
+      isIncluded: true,
+    },
+  ];
+
+  return { files, drives, locations };
+}
